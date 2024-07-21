@@ -1,0 +1,76 @@
+version: "3.9"
+name: microservices
+
+services:
+  configService:
+    build: ./configService
+    ports:
+      - "8888:8888"
+    image: "configservice"
+    environment:
+      - spring.cloud.config.server.git.uri=file://$${user.home}/cloud-conf
+
+  # Eureka Service
+  discoveryService:
+    build: ./discoveryService
+    ports:
+      - "8761:8761"
+    image: "discoveryservice"
+    depends_on:
+      - configService
+
+  # Personnel Service Database
+  personnelServiceDb:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: personneldb
+      MYSQL_PASSWORD: root
+    ports:
+      - 3306:3306
+    volumes:
+      - personneldb:/var/lib/mysql
+
+  # Annoncement Service
+  annoncement:
+    build: ./annoncementService
+    ports:
+      - 8081:8081
+    depends_on:
+      - discoveryService
+      - configService
+    environment:
+      - eureka.client.serviceUrl.defaultZone=http://discoveryService:8761/eureka
+
+  # Personnel Service
+  personnel:
+    build: ./personnelService
+    # restart: always
+    ports:
+      - 8082:8082
+    depends_on:
+      - personnelServiceDb
+      - discoveryService
+      - configService
+
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://personnelServiceDb:3306/personneldb?createDatabaseIfNotExist=true&useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      - eureka.client.serviceUrl.defaultZone=http://discoveryService:8761/eureka
+
+# Gateway Service
+  gatewayservice:
+    build: ./gatewayService
+    ports:
+      - 8762:8762
+    depends_on:
+      - personnel
+      - discoveryService
+      - personnelServiceDb
+
+    environment:
+      - eureka.client.serviceUrl.defaultZone=http://discoveryService:8761/eureka
+
+volumes:
+  personneldb:
